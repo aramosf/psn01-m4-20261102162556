@@ -1,0 +1,9 @@
+{
+  "identifier": "lab.proton.sn.bridge.m4",
+  "name": "PSN-01 M4 Bridge Component",
+  "description": "Static state-only Standard Notes bridge validation component.",
+  "version": "1.0.0",
+  "content_type": "SN|Component",
+  "area": "editor-editor",
+  "url": "https://aramosf.github.io/psn01-m4-20261102162556/component.html"
+}

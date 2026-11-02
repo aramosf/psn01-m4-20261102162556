@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PSN-01 M4 Bridge Component</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 20px; color: #111; }
+    button { display: block; width: 100%; padding: 16px; margin: 12px 0; }
+    pre { white-space: pre-wrap; background: #eee; padding: 12px; }
+    .pass { color: #067d17; font-weight: 700; }
+    .fail { color: #b00020; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>PSN-01 M4 Component</h1>
+  <p id="mode">unknown</p>
+  <p id="url"></p>
+  <button id="negative">1. Negative control: unregistered URL</button>
+  <button id="navigate">2. Canonical top navigation</button>
+  <button id="state-proof" hidden>3. State-only proof and cleanup</button>
+  <pre id="result">not tested</pre>
+<script>
+'use strict';
+
+const mode = window === window.top ? 'top-level WebView document' : 'plugin iframe';
+const result = document.getElementById('result');
+document.getElementById('mode').textContent = mode;
+document.getElementById('url').textContent = location.href;
+document.getElementById('negative').addEventListener('click', () => {
+  top.location = new URL('unregistered.html', location.origin).href;
+});
+
+document.getElementById('navigate').addEventListener('click', () => {
+  if (mode === 'plugin iframe') {
+    top.location = new URL(location.pathname, location.origin).href;
+  }
+});
+
+function line(label, passed) {
+  return label + ': ' + (passed ? 'PASS' : 'FAIL') + '\n';
+}
+
+async function stateOnlyProof() {
+  const device = window.reactNativeDevice;
+  if (typeof device !== 'object' || device === null) {
+    result.innerHTML = '<span class="fail">NEGATIVE: reactNativeDevice unavailable at top</span>';
+    return;
+  }
+
+  result.textContent = 'Running reversible state-only proof...\n';
+  const names = Object.getOwnPropertyNames(Object.getPrototypeOf(device));
+  const databaseEntries = await device.getAllDatabaseEntries('standardnotes');
+  const sanitizedEntries = Array.from(databaseEntries || []).map((entry) => ({
+    content_type: entry.content_type,
+    encrypted_payload: !(entry.content && typeof entry.content === 'object'),
+    fields: Object.keys(entry),
+    plaintext_content_fields: entry.content && typeof entry.content === 'object'
+      ? Object.keys(entry.content)
+      : null
+  }));
+
+  const identifier = 'lab.synthetic.m4';
+  const before = await device.getNamespacedKeychainValue(identifier);
+  let duringFields = [];
+  let absentAfter = false;
+  if (before === undefined) {
+    try {
+      await device.setNamespacedKeychainValue(
+        {version: 1, masterKey: 'SYNTHETIC-NOT-A-SECRET'},
+        identifier
+      );
+      const duringValue = await device.getNamespacedKeychainValue(identifier);
+      duringFields = duringValue ? Object.keys(duringValue).sort() : [];
+    } finally {
+      await device.clearNamespacedKeychainValue(identifier);
+    }
+    absentAfter = await device.getNamespacedKeychainValue(identifier) === undefined;
+  }
+
+  const sensitiveMethods = [
+    'getRawKeychainValue',
+    'getAllDatabaseEntries',
+    'saveDatabaseEntries',
+    'clearAllDataFromDevice'
+  ];
+  const sensitivePresent = sensitiveMethods.every((name) => typeof device[name] === 'function');
+  const output = line('Top-level document', window === window.top)
+    + line('Native bridge present', true)
+    + line('Bridge method count >= 60', names.length >= 60)
+    + line('Sensitive methods exposed', sensitivePresent)
+    + line('Database entries readable', Array.isArray(databaseEntries))
+    + 'Database record types: ' + sanitizedEntries.map((entry) => entry.content_type).join(', ') + '\n'
+    + line('Synthetic keychain absent before', before === undefined)
+    + 'Synthetic read fields: ' + duringFields.join(', ') + '\n'
+    + line('Synthetic keychain cleared', absentAfter);
+  result.textContent = output;
+}
+
+if (mode === 'top-level WebView document') {
+  document.getElementById('state-proof').hidden = false;
+  document.getElementById('state-proof').addEventListener('click', () => {
+    stateOnlyProof().catch((error) => {
+      result.innerHTML = '<span class="fail">ERROR: ' + String(error.message || error).replace(/[<>&]/g, '') + '</span>';
+    });
+  });
+  if (!window.reactNativeDevice) {
+    result.innerHTML = '<span class="fail">NEGATIVE: reactNativeDevice unavailable at top</span>';
+  }
+}
+</script>
+</body>
+</html>
